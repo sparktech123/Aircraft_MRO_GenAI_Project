@@ -1,0 +1,31 @@
+"""
+Shared helper used by the three specialist agents (data, rag, risk).
+Each specialist is a small LangGraph "ReAct" tool-calling agent: given
+the user's question, it can call its own tools one or more times before
+producing a text answer. This helper builds that mini-agent, runs it,
+stores its output under the right key in the shared graph state, and
+pops itself off the routing queue so the graph knows what's next.
+"""
+from langgraph.prebuilt import create_react_agent
+
+from src.genai.llm import get_llm
+from src.genai.state import AgentState
+
+
+def run_specialist(state: AgentState, tools: list, system_prompt: str, output_key: str) -> AgentState:
+    llm = get_llm(temperature=0.1)
+    agent = create_react_agent(llm, tools, prompt=system_prompt)
+
+    result = agent.invoke({"messages": [("human", state["question"])]})
+    final_message = result["messages"][-1]
+    answer_text = getattr(final_message, "content", str(final_message))
+
+    remaining = list(state.get("remaining_routes") or [])
+    if remaining and remaining[0] == output_key.replace("_output", ""):
+        remaining = remaining[1:]
+
+    return {
+        **state,
+        output_key: answer_text,
+        "remaining_routes": remaining,
+    }

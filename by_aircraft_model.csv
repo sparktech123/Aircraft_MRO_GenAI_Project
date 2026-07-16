@@ -1,0 +1,23 @@
+"""
+Single entry point for the whole FAA SDR project.
+
+Run with:
+    streamlit run app/main_app.py
+
+This replaces running dashboard.py or chat_app.py directly — those two
+files now just expose run_dashboard() / run_chat_assistant() functions,
+and this file decides which one to call based on the sidebar choice.
+"""
+import streamlit as st
+
+st.set_page_config(page_title="FAA SDR Project", page_icon="✈️", layout="wide")
+
+choice = st.sidebar.radio("Go to", ["Dashboard", "Chat Assistant"])
+st.sidebar.divider()
+
+if choice == "Dashboard":
+    from dashboard import run_dashboard
+    run_dashboard()
+else:
+    from chat_app import run_chat_assistant
+    run_chat_assistant()

@@ -1,0 +1,104 @@
+"""
+Builds (or loads) a local Chroma vector store over historical SDR
+Discrepancy narratives, so the Root-Cause RAG Agent can retrieve similar
+past reports for grounding.
+
+Run once (or whenever the labeled dataset changes):
+    python scripts/build_vectorstore.py
+
+Everything is local/free: Chroma persists to disk, embeddings come from
+a local Ollama model — no cloud vector DB, no API key.
+"""
+import sys
+from pathlib import Path
+
+import pandas as pd
+from langchain_core.documents import Document
+from langchain_chroma import Chroma
+
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+import config
+from src.genai.llm import get_embeddings
+
+
+def _build_documents(df: pd.DataFrame, max_docs: int) -> list[Document]:
+    """Dedupe near-identical discrepancy narratives and cap volume so local
+    (CPU) embedding stays fast, then wrap each as a Document with useful
+    metadata for filtering/citing in the RAG agent's answers."""
+    df = df.dropna(subset=["Discrepancy"]).copy()
+    df["Discrepancy"] = df["Discrepancy"].astype(str).str.strip()
+    df = df[df["Discrepancy"].str.len() > 10]
+    df = df.drop_duplicates(subset=["Discrepancy"])
+
+    if max_docs and max_docs > 0 and len(df) > max_docs:
+        # Keep a representative sample: prioritize critical reports (rarer,
+        # more valuable for root-cause grounding) then fill with the rest.
+        crit = df[df["Critical"] == 1]
+        noncrit = df[df["Critical"] == 0]
+        n_crit = min(len(crit), max_docs // 2)
+        n_noncrit = max_docs - n_crit
+        df = pd.concat([
+            crit.sample(n=n_crit, random_state=42) if len(crit) > n_crit else crit,
+            noncrit.sample(n=min(n_noncrit, len(noncrit)), random_state=42),
+        ])
+
+    docs = []
+    for _, row in df.iterrows():
+        metadata = {
+            "aircraft_model": str(row.get("AircraftModel", "")),
+            "part_name": str(row.get("PartName", "")),
+            "part_condition": str(row.get("PartCondition", "")),
+            "critical": bool(row.get("Critical", 0)),
+            "severity_tier": str(row.get("SeverityTier", "")),
+            "year_month": str(row.get("YearMonth", "")),
+        }
+        docs.append(Document(page_content=row["Discrepancy"], metadata=metadata))
+    return docs
+
+
+def build_vectorstore(force_rebuild: bool = False) -> Chroma:
+    """Build the Chroma store from the labeled dataset, or load it from disk
+    if it already exists and force_rebuild is False."""
+    persist_dir = str(config.VECTOR_STORE_DIR)
+    embeddings = get_embeddings()
+
+    if not force_rebuild and any(config.VECTOR_STORE_DIR.iterdir()):
+        print(f"Loading existing vector store from {persist_dir}")
+        return Chroma(
+            collection_name=config.CHROMA_COLLECTION_NAME,
+            embedding_function=embeddings,
+            persist_directory=persist_dir,
+        )
+
+    print("Building vector store from", config.LABELED_DATASET_PATH)
+    df = pd.read_csv(config.LABELED_DATASET_PATH)
+    docs = _build_documents(df, config.VECTORSTORE_MAX_DOCS)
+    print(f"Embedding {len(docs)} unique discrepancy narratives "
+          f"(this can take a while on CPU-only Ollama)...")
+
+    vs = Chroma.from_documents(
+        documents=docs,
+        embedding=embeddings,
+        collection_name=config.CHROMA_COLLECTION_NAME,
+        persist_directory=persist_dir,
+    )
+    print("Vector store built and persisted to", persist_dir)
+    return vs
+
+
+def load_vectorstore() -> Chroma:
+    """Load the persisted vector store without rebuilding (fails loudly if
+    it doesn't exist yet — run scripts/build_vectorstore.py first)."""
+    if not any(config.VECTOR_STORE_DIR.iterdir()):
+        raise FileNotFoundError(
+            "Vector store not found. Run `python scripts/build_vectorstore.py` first."
+        )
+    return Chroma(
+        collection_name=config.CHROMA_COLLECTION_NAME,
+        embedding_function=get_embeddings(),
+        persist_directory=str(config.VECTOR_STORE_DIR),
+    )
+
+
+if __name__ == "__main__":
+    build_vectorstore(force_rebuild=True)

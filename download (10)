@@ -1,0 +1,71 @@
+"""
+Task 5 — Early Warning System, adapted into the GenAI project structure.
+Reads the labeled dataset produced by src/ml/train_classifier.py and
+writes the monthly fleet trend + emerging-risk alerts that the Risk
+Agent's tools (src/genai/tools.py) read from.
+"""
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+import config
+
+
+def main():
+    df = pd.read_csv(config.LABELED_DATASET_PATH)
+    df["YearMonth"] = pd.PeriodIndex(df["YearMonth"], freq="M")
+
+    # --- Layer 1: fleet-wide control chart ---
+    monthly = df.groupby("YearMonth").agg(
+        total_reports=("Critical", "size"), critical_reports=("Critical", "sum"),
+    ).reset_index()
+    monthly["critical_rate"] = monthly["critical_reports"] / monthly["total_reports"]
+    monthly["YearMonth_str"] = monthly["YearMonth"].astype(str)
+    monthly["roll_mean"] = monthly["critical_rate"].shift(1).rolling(6, min_periods=3).mean()
+    monthly["roll_std"] = monthly["critical_rate"].shift(1).rolling(6, min_periods=3).std()
+    monthly["z_score"] = (monthly["critical_rate"] - monthly["roll_mean"]) / monthly["roll_std"]
+    monthly["anomaly"] = monthly["z_score"] > 2
+    monthly.to_csv(config.MONTHLY_TREND_PATH, index=False)
+    print("Saved monthly fleet trend to", config.MONTHLY_TREND_PATH)
+
+    # --- Layer 2: aircraft/part emerging-risk alerts ---
+    df["Group"] = df["AircraftModel"].astype(str) + " | " + df["PartName"].astype(str)
+    grp_monthly = df.groupby(["Group", "YearMonth"]).agg(
+        n=("Critical", "size"), crit=("Critical", "sum"),
+    ).reset_index()
+
+    vol = grp_monthly.groupby("Group")["n"].sum()
+    valid_groups = vol[vol >= 40].index
+    grp_monthly = grp_monthly[grp_monthly["Group"].isin(valid_groups)]
+
+    all_months = sorted(df["YearMonth"].unique())
+    recent_3, baseline_6 = all_months[-3:], (all_months[-9:-3] if len(all_months) >= 9 else all_months[:-3])
+
+    def rate_over(sub, months):
+        s = sub[sub["YearMonth"].isin(months)]
+        return np.nan if s["n"].sum() == 0 else s["crit"].sum() / s["n"].sum()
+
+    alerts = []
+    for g, sub in grp_monthly.groupby("Group"):
+        recent_rate, base_rate = rate_over(sub, recent_3), rate_over(sub, baseline_6)
+        recent_n = sub[sub["YearMonth"].isin(recent_3)]["n"].sum()
+        if pd.isna(recent_rate) or pd.isna(base_rate) or recent_n < 15:
+            continue
+        lift = recent_rate - base_rate
+        alerts.append({
+            "Group": g, "RecentCriticalRate": recent_rate, "BaselineCriticalRate": base_rate,
+            "Lift": lift, "RecentVolume": recent_n,
+        })
+
+    alerts_df = pd.DataFrame(alerts)
+    alerts_df = alerts_df[(alerts_df["Lift"] > 0.05) & (alerts_df["RecentCriticalRate"] > 0.15)]
+    alerts_df = alerts_df.sort_values(["Lift", "RecentVolume"], ascending=False)
+    alerts_df.to_csv(config.ALERTS_PATH, index=False)
+    print("Saved early-warning alerts to", config.ALERTS_PATH, f"({len(alerts_df)} active alerts)")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,18 @@
+"""Data Analytics Agent — answers quantitative questions about the FAA SDR
+dataset (counts, trends, top parts/aircraft) using LangChain tools over
+the cleaned Task 1/4 dataset. No LLM hallucination of numbers: every
+figure it reports comes from a tool call, not from the model's memory."""
+from src.genai.agents._specialist_base import run_specialist
+from src.genai.state import AgentState
+from src.genai.tools import DATA_AGENT_TOOLS
+
+SYSTEM_PROMPT = """You are the Data Analytics agent for an FAA Service \
+Difficulty Report assistant. Answer the user's question using ONLY the \
+provided tools — never invent numbers. Call get_dataset_summary for \
+general stats, get_top_parts for rankings, and get_monthly_trend for \
+time trends. Keep your final answer concise (3-6 sentences) and always \
+cite the actual figures the tools returned."""
+
+
+def data_agent_node(state: AgentState) -> AgentState:
+    return run_specialist(state, DATA_AGENT_TOOLS, SYSTEM_PROMPT, "data_agent_output")

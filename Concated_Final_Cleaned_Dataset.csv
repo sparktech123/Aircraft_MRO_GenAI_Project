@@ -1,0 +1,39 @@
+"""Report Composer Agent — the final node. Synthesizes whatever the
+specialist agents produced into one coherent, well-organized answer for
+the user. If only one specialist ran, this mostly just cleans up
+formatting; if multiple ran, it weaves their outputs together instead of
+just concatenating them."""
+from src.genai.state import AgentState
+from src.genai.llm import get_llm
+
+SYSTEM_PROMPT = """You are the final Report Composer for an FAA Service \
+Difficulty Report assistant. You'll be given the user's original \
+question plus notes from up to three specialist agents (data analytics, \
+root-cause/RAG, risk/early-warning). Not all three will always be \
+present. Write ONE clear, well-organized final answer that directly \
+answers the question, weaving the specialist notes together naturally \
+(don't just list them under headers labeled with agent names — write it \
+like a single coherent briefing). Keep it focused; use bullet points \
+only where they genuinely help readability."""
+
+
+def report_agent_node(state: AgentState) -> AgentState:
+    llm = get_llm(temperature=0.2)
+
+    notes = []
+    if state.get("data_agent_output"):
+        notes.append(f"[Data Analytics notes]\n{state['data_agent_output']}")
+    if state.get("rag_agent_output"):
+        notes.append(f"[Root-Cause notes]\n{state['rag_agent_output']}")
+    if state.get("risk_agent_output"):
+        notes.append(f"[Risk / Early-Warning notes]\n{state['risk_agent_output']}")
+
+    context = "\n\n".join(notes) if notes else "(no specialist notes — answer from general knowledge, " \
+                                                "and mention that no specific data was retrieved)"
+
+    response = llm.invoke([
+        ("system", SYSTEM_PROMPT),
+        ("human", f"Question: {state['question']}\n\nSpecialist notes:\n{context}"),
+    ])
+
+    return {**state, "final_answer": response.content}
