@@ -1,0 +1,80 @@
+"""
+Wires the six agents into a LangGraph StateGraph:
+
+                 ┌───────────────┐
+   question ───► │  supervisor   │
+                 └───────┬───────┘
+                         │ routes to 1-4 of:
+        ┌────────────────┼────────────────┬─────────────┐
+        ▼                ▼                ▼             ▼
+  data_agent       rag_agent         risk_agent    graph_agent
+        │                │                │             │
+        └────────────────┴────────┬───────┴─────────────┘
+                                   ▼
+                            report_agent
+                                   │
+                                   ▼
+                                  END
+
+Each specialist agent pops itself off the routing queue when it finishes;
+the same `route_next` function decides what runs next (another queued
+specialist, or the report agent once the queue is empty).
+"""
+from langgraph.graph import StateGraph, END
+
+from src.genai.state import AgentState
+from src.genai.agents.supervisor import supervisor_node, route_next
+from src.genai.agents.data_agent import data_agent_node
+from src.genai.agents.rag_agent import rag_agent_node
+from src.genai.agents.risk_agent import risk_agent_node
+from src.genai.agents.graph_agent import graph_agent_node
+from src.genai.agents.report_agent import report_agent_node
+
+_ROUTE_MAP = {
+    "data_agent": "data_agent",
+    "rag_agent": "rag_agent",
+    "risk_agent": "risk_agent",
+    "graph_agent": "graph_agent",
+    "report_agent": "report_agent",
+}
+
+
+def build_graph():
+    graph = StateGraph(AgentState)
+
+    graph.add_node("supervisor", supervisor_node)
+    graph.add_node("data_agent", data_agent_node)
+    graph.add_node("rag_agent", rag_agent_node)
+    graph.add_node("risk_agent", risk_agent_node)
+    graph.add_node("graph_agent", graph_agent_node)
+    graph.add_node("report_agent", report_agent_node)
+
+    graph.set_entry_point("supervisor")
+
+    graph.add_conditional_edges("supervisor", route_next, _ROUTE_MAP)
+    graph.add_conditional_edges("data_agent", route_next, _ROUTE_MAP)
+    graph.add_conditional_edges("rag_agent", route_next, _ROUTE_MAP)
+    graph.add_conditional_edges("risk_agent", route_next, _ROUTE_MAP)
+    graph.add_conditional_edges("graph_agent", route_next, _ROUTE_MAP)
+
+    graph.add_edge("report_agent", END)
+
+    return graph.compile()
+
+
+def ask(question: str, chat_history: list | None = None) -> dict:
+    """Convenience entry point used by the Streamlit app."""
+    app = build_graph()
+    initial_state: AgentState = {
+        "question": question,
+        "chat_history": chat_history or [],
+    }
+    return app.invoke(initial_state)
+
+
+if __name__ == "__main__":
+    import sys
+    q = " ".join(sys.argv[1:]) or "What are the top parts by critical issue count?"
+    result = ask(q)
+    print("\nROUTE:", result.get("routing_reason"))
+    print("\nFINAL ANSWER:\n", result.get("final_answer"))
