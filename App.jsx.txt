@@ -1,0 +1,21 @@
+// src/App.jsx
+import { useState } from "react";
+import Sidebar from "./components/Sidebar";
+import ChatAssistant from "./components/ChatAssistant";
+import CurrentAlerts from "./components/CurrentAlerts";
+import FleetControlChart from "./components/FleetControlChart";
+
+export default function App() {
+  const [page, setPage] = useState("chat");
+
+  return (
+    <div style={{ display: "flex" }}>
+      <Sidebar page={page} setPage={setPage} />
+      <main style={{ flex: 1 }}>
+        {page === "chat" && <ChatAssistant />}
+        {page === "alerts" && <CurrentAlerts />}
+        {page === "trend" && <FleetControlChart />}
+      </main>
+    </div>
+  );
+}

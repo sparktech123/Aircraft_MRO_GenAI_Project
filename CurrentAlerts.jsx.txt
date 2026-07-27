@@ -1,0 +1,50 @@
+// src/components/CurrentAlerts.jsx
+import { useEffect, useState } from "react";
+import { getAlerts } from "../api/client";
+
+export default function CurrentAlerts() {
+  const [alerts, setAlerts] = useState([]);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getAlerts()
+      .then(setAlerts)
+      .catch(() => setError("Alerts file not found. Run the Task 5 pipeline first."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p style={{ padding: 16 }}>Loading alerts...</p>;
+  if (error) return <p style={{ padding: 16, color: "#a15c00" }}>⚠️ {error}</p>;
+  if (alerts.length === 0) return <p style={{ padding: 16 }}>No current alerts.</p>;
+
+  const columns = Object.keys(alerts[0]);
+
+  return (
+    <div style={{ padding: 16, overflowX: "auto" }}>
+      <h2>⚠️ Current Early-Warning Alerts</h2>
+      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <thead>
+          <tr>
+            {columns.map((col) => (
+              <th key={col} style={{ border: "1px solid #ddd", padding: 8, textAlign: "left", background: "#fafafa" }}>
+                {col}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {alerts.map((row, i) => (
+            <tr key={i}>
+              {columns.map((col) => (
+                <td key={col} style={{ border: "1px solid #eee", padding: 8 }}>
+                  {String(row[col])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

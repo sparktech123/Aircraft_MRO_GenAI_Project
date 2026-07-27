@@ -1,0 +1,96 @@
+// src/components/ChatAssistant.jsx
+import { useState } from "react";
+import { askAssistant } from "../api/client";
+
+export default function ChatAssistant() {
+  const [messages, setMessages] = useState([]); // {role, content, trace}
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSend() {
+    if (!input.trim()) return;
+    const question = input;
+    const historyForApi = messages.map((m) => ({ role: m.role, content: m.content }));
+    setInput("");
+    setMessages((prev) => [...prev, { role: "user", content: question }]);
+    setLoading(true);
+
+    try {
+      const result = await askAssistant(question, historyForApi);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: result.final_answer,
+          routingReason: result.routing_reason,
+          trace: result.trace,
+        },
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "⚠️ Something went wrong reaching the assistant. Check that the backend, Ollama, and Neo4j are all running.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: 16 }}>
+      <h2>✈️ FAA SDR Intelligence Assistant</h2>
+      <p style={{ color: "#666", fontSize: 14 }}>
+        Ask about trends, root causes, relationships between parts, or current risk —
+        grounded in your real SDR data. Free & local (Ollama + Neo4j).
+      </p>
+
+      <div style={{ minHeight: 300, margin: "16px 0" }}>
+        {messages.map((m, i) => (
+          <div key={i} style={{ textAlign: m.role === "user" ? "right" : "left", margin: "10px 0" }}>
+            <div
+              style={{
+                display: "inline-block",
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: m.role === "user" ? "#DCF2FF" : "#F1F1F1",
+                maxWidth: "85%",
+                textAlign: "left",
+              }}
+            >
+              <div>{m.content}</div>
+
+              {m.role === "assistant" && m.trace && Object.keys(m.trace).length > 0 && (
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ cursor: "pointer", fontSize: 13, color: "#555" }}>Agent trace</summary>
+                  {m.routingReason && <p style={{ fontSize: 12, color: "#777" }}>{m.routingReason}</p>}
+                  {Object.entries(m.trace).map(([label, text]) => (
+                    <div key={label} style={{ fontSize: 12, marginTop: 6 }}>
+                      <strong>{label}</strong>
+                      <pre style={{ whiteSpace: "pre-wrap" }}>{text}</pre>
+                    </div>
+                  ))}
+                </details>
+              )}
+            </div>
+          </div>
+        ))}
+        {loading && <p><em>Routing to the right specialist agent(s)...</em></p>}
+      </div>
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          style={{ flex: 1, padding: 10 }}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          placeholder="e.g. Why do battery packs keep failing on the 737, and how risky is it right now?"
+        />
+        <button onClick={handleSend} disabled={loading}>Send</button>
+      </div>
+    </div>
+  );
+}
