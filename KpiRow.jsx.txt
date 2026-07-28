@@ -1,0 +1,45 @@
+// src/components/KpiRow.jsx
+import { useEffect, useState } from "react";
+import { getKpis } from "../api/dashboard";
+
+const cardStyle = {
+  background: "#161b22",
+  border: "1px solid #21262d",
+  borderRadius: 10,
+  padding: "1.1rem 1.2rem",
+  textAlign: "center",
+  flex: 1,
+};
+
+export default function KpiRow({ dataset }) {
+  const [kpis, setKpis] = useState(null);
+
+  useEffect(() => {
+    getKpis(dataset).then(setKpis).catch(() => setKpis(null));
+  }, [dataset]);
+
+  if (!kpis) return <p style={{ color: "#8b949e" }}>Loading KPIs...</p>;
+
+  const tiles = [
+    { label: "Total SDRs", value: kpis.total_sdrs?.toLocaleString(), delta: kpis.label },
+    { label: "Days to Submit", value: kpis.days_to_submit != null ? `${kpis.days_to_submit}D` : "N/A", delta: "Avg days to submit" },
+    { label: "Aircraft Makes", value: kpis.aircraft_makes, delta: "Aircraft makes" },
+    { label: "Unique Parts", value: kpis.unique_parts, delta: "Unique parts" },
+    { label: "FAA Regions", value: kpis.faa_regions, delta: "FAA regions" },
+    { label: "Years", value: kpis.years_covered, delta: "Years covered" },
+  ];
+
+  return (
+    <div style={{ display: "flex", gap: 12, margin: "16px 0" }}>
+      {tiles.map((t) => (
+        <div key={t.label} style={cardStyle}>
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#8b949e", marginBottom: 6 }}>
+            {t.label}
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: "#e6edf3" }}>{t.value}</div>
+          <div style={{ fontSize: 12, color: "#8b949e", marginTop: 4 }}>{t.delta}</div>
+        </div>
+      ))}
+    </div>
+  );
+}

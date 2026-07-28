@@ -1,0 +1,116 @@
+// src/components/TrainingResultsTab.jsx
+import { useEffect, useState } from "react";
+import { getTrainingResults, plotUrl } from "../api/dashboard";
+
+const sectionHeader = {
+  fontSize: "1.05rem",
+  fontWeight: 600,
+  color: "#3b82f6",
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  borderBottom: "1px solid #21262d",
+  padding: "0.4rem 0",
+  margin: "1.4rem 0 0.8rem",
+};
+
+const metricColor = (val) => (val >= 0.9 ? "#22c55e" : val >= 0.8 ? "#f59e0b" : "#ef4444");
+
+export default function TrainingResultsTab() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    getTrainingResults()
+      .then(setData)
+      .catch((err) => setError(err.response?.data?.detail || "Failed to load training results."));
+  }, []);
+
+  if (error) return <p style={{ color: "#ef4444" }}>⚠️ {error}</p>;
+  if (!data) return <p style={{ color: "#8b949e" }}>Loading training results...</p>;
+
+  const metricLabels = {
+    accuracy: "Accuracy",
+    precision: "Precision",
+    recall: "Recall",
+    f1_score: "F1 Score",
+    roc_auc: "ROC-AUC",
+  };
+
+  return (
+    <div>
+      <div style={{ background: "rgba(59,130,246,.1)", borderLeft: "3px solid #3b82f6", padding: "0.7rem 1rem", borderRadius: 4, marginBottom: 16 }}>
+        ℹ️ Model Training Results — from 01_train_model.py (2021-2025 historical data)
+      </div>
+
+      <div style={sectionHeader}>Selected Model & Cross-Validated Performance</div>
+      <p>
+        <strong>Best model (chosen by 5-fold CV F1):</strong> <code>{data.best_model}</code>
+        <br />
+        Trained on <strong>{data.trained_rows?.toLocaleString()}</strong> rows (
+        {data.trained_date_range?.[0]?.slice(0, 10)} to {data.trained_date_range?.[1]?.slice(0, 10)})
+      </p>
+
+      <div style={{ display: "flex", gap: 12, marginBottom: 8 }}>
+        {Object.entries(data.metric_cards).map(([key, val]) => (
+          <div key={key} style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 10, padding: "1rem", textAlign: "center" }}>
+            <div style={{ fontSize: 11, textTransform: "uppercase", color: "#8b949e" }}>{metricLabels[key]} (5-fold CV)</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: metricColor(val) }}>{val.toFixed(3)}</div>
+          </div>
+        ))}
+      </div>
+      <p style={{ fontSize: 12, color: "#8b949e" }}>
+        These are cross-validated metrics from training — not recomputed live, and not scored on data the final model was refit on.
+      </p>
+
+      <div style={sectionHeader}>Full Model Comparison — All 3 Algorithms</div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+          <thead>
+            <tr>
+              {data.all_models_comparison[0] &&
+                Object.keys(data.all_models_comparison[0]).map((col) => (
+                  <th key={col} style={{ border: "1px solid #21262d", padding: 6, textAlign: "left" }}>{col}</th>
+                ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.all_models_comparison.map((row, i) => (
+              <tr key={i}>
+                {Object.values(row).map((val, j) => (
+                  <td key={j} style={{ border: "1px solid #21262d", padding: 6 }}>{String(val)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {data.available_plots.map((plot) => (
+        <div key={plot}>
+          <div style={sectionHeader}>{plot.replace(/^\d+_/, "").replace(/_/g, " ").replace(".png", "")}</div>
+          <img src={plotUrl(plot)} alt={plot} style={{ maxWidth: "100%", borderRadius: 8 }} />
+        </div>
+      ))}
+
+      {data.feature_importance_plots.length > 0 && (
+        <>
+          <div style={sectionHeader}>Feature Importance</div>
+          <div style={{ display: "flex", gap: 12 }}>
+            {data.feature_importance_plots.map((plot) => (
+              <img key={plot} src={plotUrl(plot)} alt={plot} style={{ flex: 1, maxWidth: "48%", borderRadius: 8 }} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {data.label_rule && (
+        <details style={{ marginTop: 16 }}>
+          <summary style={{ cursor: "pointer" }}>Label rule reference — how severity_flag was assigned</summary>
+          <pre style={{ background: "#161b22", padding: 12, borderRadius: 8, fontSize: 12 }}>
+            {JSON.stringify(data.label_rule, null, 2)}
+          </pre>
+        </details>
+      )}
+    </div>
+  );
+}

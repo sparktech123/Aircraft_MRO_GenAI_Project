@@ -1,0 +1,54 @@
+// src/components/Sidebar.jsx
+import config from "../config";
+
+export default function Sidebar({ page, setPage }) {
+  const navItem = (key, label) => (
+    <div
+      onClick={() => setPage(key)}
+      style={{
+        padding: "8px 12px",
+        marginBottom: 4,
+        borderRadius: 6,
+        cursor: "pointer",
+        background: page === key ? "#E8F0FE" : "transparent",
+        fontWeight: page === key ? 600 : 400,
+      }}
+    >
+      {label}
+    </div>
+  );
+
+  return (
+    <nav style={{ width: 240, padding: 16, borderRight: "1px solid #ddd", minHeight: "100vh" }}>
+      <h2 style={{ marginBottom: 0 }}>✈️ FAA SDR Assistant</h2>
+      <p style={{ fontSize: 12, color: "#777" }}>
+        Multi-agent GenAI layer on top of the Task 1-5 pipeline
+      </p>
+
+      <h4>Stack</h4>
+      <ul style={{ fontSize: 13, paddingLeft: 18 }}>
+        <li><strong>LLM:</strong> Ollama · {config.OLLAMA_CHAT_MODEL}</li>
+        <li><strong>Embeddings:</strong> Ollama · {config.OLLAMA_EMBED_MODEL}</li>
+        <li><strong>Orchestration:</strong> LangGraph (6-agent supervisor graph)</li>
+        <li><strong>Vector store:</strong> Chroma (local)</li>
+        <li><strong>Knowledge graph:</strong> Neo4j</li>
+      </ul>
+
+      <h4>Agents</h4>
+      <ol style={{ fontSize: 13, paddingLeft: 18 }}>
+        <li>🧭 Supervisor / Router</li>
+        <li>📊 Data Analytics</li>
+        <li>🔎 Root-Cause (RAG)</li>
+        <li>⚠️ Risk / Early-Warning</li>
+        <li>🕸️ Knowledge Graph</li>
+        <li>📝 Report Composer</li>
+      </ol>
+
+      <h4>Quick links</h4>
+      {navItem("dashboard", "Dashboard")}
+      {navItem("chat", "Chat")}
+      {navItem("alerts", "Current Alerts")}
+      {navItem("trend", "Fleet Control Chart")}
+    </nav>
+  );
+}

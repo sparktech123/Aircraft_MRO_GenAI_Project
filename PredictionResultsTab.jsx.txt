@@ -1,0 +1,123 @@
+// src/components/PredictionResultsTab.jsx
+import { useEffect, useState } from "react";
+import { getPredictionResults, plotUrl } from "../api/dashboard";
+
+const sectionHeader = {
+  fontSize: "1.05rem",
+  fontWeight: 600,
+  color: "#3b82f6",
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  borderBottom: "1px solid #21262d",
+  padding: "0.4rem 0",
+  margin: "1.4rem 0 0.8rem",
+};
+
+function DataTable({ rows }) {
+  if (!rows || rows.length === 0) return null;
+  const columns = Object.keys(rows[0]);
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+        <thead>
+          <tr>{columns.map((c) => <th key={c} style={{ border: "1px solid #21262d", padding: 6, textAlign: "left" }}>{c}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i}>{columns.map((c) => <td key={c} style={{ border: "1px solid #21262d", padding: 6 }}>{String(row[c])}</td>)}</tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function PredictionResultsTab() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    getPredictionResults()
+      .then(setData)
+      .catch((err) => setError(err.response?.data?.detail || "Failed to load prediction results."));
+  }, []);
+
+  if (error) return <p style={{ color: "#ef4444" }}>⚠️ {error}</p>;
+  if (!data) return <p style={{ color: "#8b949e" }}>Loading prediction results...</p>;
+
+  const { kpis } = data;
+  const kpiTiles = [
+    { label: "Total 2026 Records", value: kpis.total_records_2026?.toLocaleString() },
+    { label: "Predicted Critical", value: kpis.predicted_critical_count?.toLocaleString() },
+    { label: "Predicted Non-Critical", value: kpis.predicted_non_critical_count?.toLocaleString() },
+    { label: "Critical Rate", value: `${(kpis.predicted_critical_rate * 100).toFixed(1)}%` },
+    { label: "Avg. Critical Probability", value: kpis.avg_critical_probability?.toFixed(3) },
+  ];
+
+  return (
+    <div>
+      <div style={{ background: "rgba(59,130,246,.1)", borderLeft: "3px solid #3b82f6", padding: "0.7rem 1rem", borderRadius: 4, marginBottom: 16 }}>
+        ℹ️ 2026 Predictions — from 02_predict_2026.py (unseen data, scored by the saved model)
+      </div>
+      <p style={{ fontSize: 12, color: "#8b949e" }}>
+        Model used: <code>{kpis.model_used}</code> | trained through {kpis.model_trained_through?.slice(0, 10)} |
+        scoring {kpis.date_range?.[0]?.slice(0, 10)} to {kpis.date_range?.[1]?.slice(0, 10)}
+      </p>
+
+      <div style={{ display: "flex", gap: 12, margin: "12px 0" }}>
+        {kpiTiles.map((t) => (
+          <div key={t.label} style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 10, padding: "1rem", textAlign: "center" }}>
+            <div style={{ fontSize: 11, textTransform: "uppercase", color: "#8b949e" }}>{t.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{t.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={sectionHeader}>Monthly Volume & Predicted Critical Rate</div>
+      {data.available_plots.includes("01_2026_monthly_trend.png") && (
+        <img src={plotUrl("01_2026_monthly_trend.png")} alt="monthly trend" style={{ maxWidth: "100%", borderRadius: 8 }} />
+      )}
+      <DataTable rows={data.monthly} />
+
+      <div style={sectionHeader}>Top Parts & Aircraft Models by Predicted Critical Volume</div>
+      <div style={{ display: "flex", gap: 16 }}>
+        <div style={{ flex: 1 }}>
+          {data.available_plots.includes("02_2026_top_parts_critical.png") && (
+            <img src={plotUrl("02_2026_top_parts_critical.png")} alt="top parts" style={{ maxWidth: "100%", borderRadius: 8 }} />
+          )}
+          <DataTable rows={data.by_part} />
+        </div>
+        <div style={{ flex: 1 }}>
+          {data.available_plots.includes("03_2026_top_models_critical.png") && (
+            <img src={plotUrl("03_2026_top_models_critical.png")} alt="top models" style={{ maxWidth: "100%", borderRadius: 8 }} />
+          )}
+          <DataTable rows={data.by_model} />
+        </div>
+      </div>
+
+      {data.by_region.length > 0 && (
+        <>
+          <div style={sectionHeader}>Regional Breakdown</div>
+          <DataTable rows={data.by_region} />
+        </>
+      )}
+
+      <div style={sectionHeader}>Prediction & Probability Distribution</div>
+      <div style={{ display: "flex", gap: 16 }}>
+        {data.available_plots.includes("04_2026_prediction_distribution.png") && (
+          <img src={plotUrl("04_2026_prediction_distribution.png")} alt="prediction distribution" style={{ flex: 1, maxWidth: "48%", borderRadius: 8 }} />
+        )}
+        {data.available_plots.includes("05_2026_probability_histogram.png") && (
+          <img src={plotUrl("05_2026_probability_histogram.png")} alt="probability histogram" style={{ flex: 1, maxWidth: "48%", borderRadius: 8 }} />
+        )}
+      </div>
+
+      {data.top_examples.length > 0 && (
+        <>
+          <div style={sectionHeader}>Top Highest-Risk Records — Watchlist</div>
+          <DataTable rows={data.top_examples} />
+        </>
+      )}
+    </div>
+  );
+}
